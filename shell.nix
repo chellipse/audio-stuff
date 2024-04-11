@@ -24,9 +24,14 @@ in
     rust-analyzer
 
     ### dep ###
-    # openssl
+    openssl
     pkg-config
+
     libpulseaudio
+
+    libxkbcommon
+    xorg.libX11
+    xorg.libXcursor
   ];
 
   RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";

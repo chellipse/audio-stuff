@@ -181,7 +181,9 @@ impl DesktopAudioRecorder {
         let sample_spec = Spec {
             channels: 1,
             format: pulse::sample::Format::S16le,
-            rate: 16000
+            // rate: 41000
+            rate: 1040
+            // rate: 120
         };
 
         assert!(sample_spec.is_valid());
@@ -193,19 +195,23 @@ impl DesktopAudioRecorder {
             None
         ).unwrap();
 
-        let val = u32::max_value();
+        // let val = u32::max_value();
+        // let val = 0u32;
         // let val = u16::max_value() as u32;
+
+        let mut flags = StreamFlagSet::NOFLAGS;
+        flags.set(StreamFlagSet::ADJUST_LATENCY, true);
 
         stream.connect_record(
             Some(&monitor_source_name),
             Some(&BufferAttr {
-                maxlength: val,
-                tlength: val,
-                prebuf: val,
-                minreq: val,
-                fragsize: 4
+                maxlength: 4096,
+                tlength: 4096,
+                prebuf: 0,
+                minreq: 4096,
+                fragsize: 512
             }),
-            StreamFlagSet::NOFLAGS
+            flags
         ).unwrap();
 
 
@@ -213,7 +219,7 @@ impl DesktopAudioRecorder {
     }
     
     /// Read some data from the stream, make sure to call this in a loop.
-    pub fn read_frame(&mut self) -> Result<Vec<u8>, ReadError> {
+    pub fn read_frame(&mut self) -> Result<Vec<i16>, ReadError> {
         use ReadError::*;
 
         // match self.stream.readable_size() {
@@ -229,7 +235,8 @@ impl DesktopAudioRecorder {
 
             match self.stream.get_state() {
                 pulse::stream::State::Ready => {},
-                _ => {
+                _o => {
+                    // dbg!(_o);
                     continue;
                 }
             }
@@ -237,22 +244,27 @@ impl DesktopAudioRecorder {
             match peek_result {
                 PeekResult::Data(data) => {
                     // There is probably a nicer way to do this.
-                    // let parsed_data: Vec<i32> = data.into_iter()
-                        // .step_by(4)
-                        // .enumerate()
-                        // .map(|(i, _)| {
-                            // i32::from_le_bytes(data[i*4..(i+1)*4].try_into().unwrap())
-                        // })
-                        // .collect();
+                    let parsed_data: Vec<i16> = data.into_iter()
+                        .step_by(4)
+                        .enumerate()
+                        .map(|(i, _)| {
+                            i16::from_le_bytes(data[i*2..(i+1)*2].try_into().unwrap())
+                        })
+                        .collect();
 
-                    let parsed_data: Vec<u8> = Vec::from(data);
+                    // let parsed_data: Vec<u8> = Vec::from(data);
 
                     self.stream.discard().unwrap();
                     self.stream.flush(None);
                     return Ok(parsed_data);
                 },
-                PeekResult::Empty => {},
-                PeekResult::Hole(..) => { self.stream.discard().unwrap(); }
+                PeekResult::Empty => {
+                    // println!("Empty!");
+                },
+                PeekResult::Hole(..) => {
+                    // println!("Hole!");
+                    self.stream.discard().unwrap();
+                }
             }
         };
     }

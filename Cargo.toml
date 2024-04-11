@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 libpulse-binding = "2.28.1"
 thiserror = "1.0.58"
+minifb = "0.25"
