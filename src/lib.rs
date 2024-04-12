@@ -244,7 +244,11 @@ impl DesktopAudioRecorder {
         use ReadError::*;
 
         match self.stream.readable_size() {
-            Some(size) => print!("R: {:3} ", size),
+            Some(size) => {
+                if size > 4096 {
+                    print!("R: {:3} ", size)
+                }
+            },
             None => {},
         };
 
