@@ -185,6 +185,7 @@ impl DesktopAudioRecorder {
             rate: 48000
             // rate: 41000
             // rate: 24000
+            // rate: 4096
             // rate: 1800
             // rate: 120
         };
@@ -202,6 +203,7 @@ impl DesktopAudioRecorder {
         // let val = 0u32;
         // let val = u16::max_value() as u32;
         // let val = 4096;
+        // let val = 768;
 
         let flags = StreamFlagSet::ADJUST_LATENCY;
 
