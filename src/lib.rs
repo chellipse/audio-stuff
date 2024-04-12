@@ -176,13 +176,16 @@ impl DesktopAudioRecorder {
             }
         }
 
+        // println!(".");
         let monitor_source_name = get_default_sink_monitor(&mut context, &mut mainloop)?;
         // dbg!(&monitor_source_name);
         let sample_spec = Spec {
             channels: 1,
-            format: pulse::sample::Format::S16le,
+            format: pulse::sample::Format::U8,
+            rate: 48000
             // rate: 41000
-            rate: 1040
+            // rate: 24000
+            // rate: 1800
             // rate: 120
         };
 
@@ -195,37 +198,53 @@ impl DesktopAudioRecorder {
             None
         ).unwrap();
 
-        // let val = u32::max_value();
+        let val = u32::max_value();
         // let val = 0u32;
         // let val = u16::max_value() as u32;
+        // let val = 4096;
 
-        let mut flags = StreamFlagSet::NOFLAGS;
-        flags.set(StreamFlagSet::ADJUST_LATENCY, true);
+        let flags = StreamFlagSet::ADJUST_LATENCY;
 
         stream.connect_record(
             Some(&monitor_source_name),
             Some(&BufferAttr {
-                maxlength: 4096,
-                tlength: 4096,
+                maxlength: val,
+                tlength: val,
                 prebuf: 0,
-                minreq: 4096,
-                fragsize: 512
+                minreq: val,
+                fragsize: val
             }),
             flags
         ).unwrap();
 
+        // println!(".");
+        // stream.connect_playback(
+            // Some(&monitor_source_name),
+            // Some(&BufferAttr {
+                // maxlength: val,
+                // tlength: val,
+                // prebuf: 0,
+                // minreq: val,
+                // fragsize: val
+            // }),
+            // StreamFlagSet::NOFLAGS,
+            // None,
+            // None
+        // ).unwrap();
 
+        // println!(".");
         Ok(DesktopAudioRecorder { mainloop, context, stream })
     }
-    
+
     /// Read some data from the stream, make sure to call this in a loop.
-    pub fn read_frame(&mut self) -> Result<Vec<i16>, ReadError> {
+    pub fn read_frame(&mut self) -> Result<&[u8], ReadError> {
+        // println!(".");
         use ReadError::*;
 
-        // match self.stream.readable_size() {
-            // Some(size) => print!("{} ", size),
-            // None => {},
-        // };
+        match self.stream.readable_size() {
+            Some(size) => print!("R: {:3} ", size),
+            None => {},
+        };
 
         loop {
             match self.mainloop.iterate(true) {
@@ -236,27 +255,38 @@ impl DesktopAudioRecorder {
             match self.stream.get_state() {
                 pulse::stream::State::Ready => {},
                 _o => {
-                    // dbg!(_o);
+                    dbg!(_o);
                     continue;
                 }
             }
+            // loop {
+                // match self.stream.readable_size()
+            // }
             let peek_result = self.stream.peek()?;
             match peek_result {
                 PeekResult::Data(data) => {
+                    // println!("DL: {}", data.len());
+
                     // There is probably a nicer way to do this.
-                    let parsed_data: Vec<i16> = data.into_iter()
-                        .step_by(4)
-                        .enumerate()
-                        .map(|(i, _)| {
-                            i16::from_le_bytes(data[i*2..(i+1)*2].try_into().unwrap())
-                        })
-                        .collect();
+                    // let parsed_data: Vec<i16> = data.into_iter()
+                    // .step_by(4)
+                    // .enumerate()
+                    // .map(|(i, _)| {
+                    // i16::from_le_bytes(data[i*2..(i+1)*2].try_into().unwrap())
+                    // })
+                    // .collect();
 
                     // let parsed_data: Vec<u8> = Vec::from(data);
 
+                    // let parsed_data: Vec<i16> = unsafe { std::mem::transmute(data)};
+
+                    // let parsed_data = data as *const [i16];
+
                     self.stream.discard().unwrap();
-                    self.stream.flush(None);
-                    return Ok(parsed_data);
+                    // self.stream.flush(None);
+                    // self.stream.flush(None);
+
+                    return Ok(data);
                 },
                 PeekResult::Empty => {
                     // println!("Empty!");
