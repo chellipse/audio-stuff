@@ -80,7 +80,7 @@ fn get_default_sink_monitor(
 
                             default_sink_monitor_name.replace(Some(name));
                         }
-                        _ => return,
+                        _ => (),
                     }
                 });
     }
@@ -243,14 +243,11 @@ impl DesktopAudioRecorder {
         // println!(".");
         use ReadError::*;
 
-        match self.stream.readable_size() {
-            Some(size) => {
-                if size > 4096 {
-                    print!("R: {:3} ", size)
-                }
-            },
-            None => {},
-        };
+        // if let Some(size) = self.stream.readable_size() {
+            // if size > 4096 {
+                // print!("R: {:3} ", size)
+            // }
+        // };
 
         loop {
             match self.mainloop.iterate(true) {

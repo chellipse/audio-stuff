@@ -1,7 +1,7 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use std::time;
+// use std::time;
 
 use audio::DesktopAudioRecorder;
 
@@ -12,8 +12,8 @@ use rustfft::{FftPlanner, num_complex::Complex};
 // const WIDTH: usize = 768;
 // const HEIGHT: usize = 256;
 
-const WIDTH: usize = 1024;
-const HEIGHT: usize = 512;
+const WIDTH: usize = 1536;
+const HEIGHT: usize = 1024;
 
 const AREA: usize = WIDTH * HEIGHT;
 
@@ -33,15 +33,15 @@ const AREA: usize = WIDTH * HEIGHT;
     // interpolated.round() as i16
 // }
 
-fn mean(slice: &[u8]) -> u32 {
-    let mut col = 0u32;
-    for item in slice {
-        // if *item > 128 {
-            col += *item as u32;
-        // }
-    }
-    col / slice.len() as u32
-}
+// fn mean(slice: &[u8]) -> u32 {
+    // let mut col = 0u32;
+    // for item in slice {
+        // // if *item > 128 {
+            // col += *item as u32;
+        // // }
+    // }
+    // col / slice.len() as u32
+// }
 
 #[allow(dead_code)]
 fn save_to_file(file_name: &str, data: &[u8]) {
@@ -109,6 +109,27 @@ fn interleave_reversed_halves(vec: &mut Vec<Complex<f32>>) -> Vec<Complex<f32>> 
     result
 }
 
+// linearly interpolates A's position between B and C to D and E
+fn lerp(a: f32, b: f32, c: f32, d: f32, e: f32) -> f32 {
+    (a - b) * (e - d) / (c - b) + d
+}
+
+struct Rgb {
+    r: u32,
+    g: u32,
+    b: u32,
+}
+
+
+// same as lerp() but the output values are Rgb structs
+fn rgb_lerp(x: f32, y: f32, z: f32, color1: &Rgb, color2: &Rgb) -> Rgb {
+    Rgb {
+        r: lerp(x, y, z, color1.r as f32, color2.r as f32) as u32,
+        g: lerp(x, y, z, color1.g as f32, color2.g as f32) as u32,
+        b: lerp(x, y, z, color1.b as f32, color2.b as f32) as u32,
+    }
+}
+
 fn main() {
     let mut recorder = DesktopAudioRecorder::new("Experiment").unwrap();
 
@@ -117,13 +138,13 @@ fn main() {
         WIDTH,
         HEIGHT,
         WindowOptions {
-            borderless: true,
+            borderless: false,
             title: true,
             resize: false,
-            scale: Scale::X2,
-            scale_mode: ScaleMode::AspectRatioStretch,
+            scale: Scale::X1,
+            scale_mode: ScaleMode::Center,
             topmost: true,
-            transparency: true,
+            transparency: false,
             none: false,
         })
         .unwrap_or_else(|e| {
@@ -154,9 +175,9 @@ fn main() {
     let mut update = false;
 
 
-    // let fft_size = 4096;
+    let fft_size = 4096;
     // let fft_size = 2048;
-    let fft_size = 1024;
+    // let fft_size = 1024;
     // let fft_size = 512;
     // let fft_size = 256;
     let line_res = HEIGHT;
@@ -170,6 +191,8 @@ fn main() {
     let mut scan_pos = 0;
 
     let mut scan_ct = 0;
+
+    // let mut profile: [u32; 256] = [0; 256];
 
     while window.is_open() {
         match recorder.read_frame() {
@@ -207,15 +230,18 @@ fn main() {
 
                     let mut vals: Vec<u8> = Vec::with_capacity(line_res);
 
-                    for (i, big_chunk) in rev_inter_cb.chunks_exact(fft_size/4).enumerate() {
+                    for (i, big_chunk) in rev_inter_cb.chunks_exact(fft_size/32).enumerate() {
                         let local_chunk_size = match i {
-                            0 => chunk_size*2,
-                            1 => chunk_size*2,
-                            2 => chunk_size,
-                            3 => chunk_size/2,
+                            0..=7       => 8,
+                            8..=15      => 7,
+                            16..=17     => 6,
+                            18..=19     => 5,
+                            20..=21     => 4,
+                            22..=26     => 3,
+                            27..=30     => 2,
+                            31          => 1,
                             o => {
-                                eprintln!("Whattttt?????!? {}", o);
-                                chunk_size
+                                panic!("Whattttt?????!? {}", o);
                             },
                         };
                         // dbg!(local_chunk_size);
@@ -229,14 +255,42 @@ fn main() {
                             let c = interpolate_f32_to_u8(b);
                             vals.push(c);
                         }
+                        // println!("{:?}", vals.len());
                     }
-                    // println!("{:?}", vals.len());
+                    let printable_vals = {
+                        let len = vals.len();
+                        if len < line_res {len} else {line_res}
+                    };
 
-                    for (i, v) in vals[..HEIGHT].iter().enumerate() {
-                        let pos = i * WIDTH + scan_pos;
+                    // const COLOR1: Rgb = Rgb {r: 000, g: 000, b: 000};
+                    // const COLOR2: Rgb = Rgb {r: 127, g: 000, b: 127};
+                    // const COLOR3: Rgb = Rgb {r: 255, g: 000, b: 000};
+                    // const COLOR4: Rgb = Rgb {r: 255, g: 230, b: 000};
+                    // const COLOR5: Rgb = Rgb {r: 255, g: 255, b: 255};
+
+                    const COLOR1: Rgb = Rgb {r: 000, g: 000, b: 000};
+                    const COLOR2: Rgb = Rgb {r: 080, g: 080, b: 120};
+                    const COLOR3: Rgb = Rgb {r: 155, g: 155, b: 200};
+                    const COLOR4: Rgb = Rgb {r: 200, g: 200, b: 255};
+                    const COLOR5: Rgb = Rgb {r: 255, g: 255, b: 255};
+
+                    for (i, v) in vals[..printable_vals].iter().enumerate() {
+                        // let lc = match *v {
+                            // 000..=063  => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR1, &COLOR2)},
+                            // 064..=127 => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR2, &COLOR3)},
+                            // 128..=195 => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR3, &COLOR4)},
+                            // 196..=255 => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR4, &COLOR5)},
+                        // };
+                        // let col = (255u32 << 24) | (lc.r << 16) | (lc.g << 8) | lc.b;
+
                         let a = *v as u32;
-                        let col = (255u32 << 24) | (a << 16) | (a << 8) | a;
+                        // // let col = (255u32 << 24) | (a << 16) | (a << 8) | a;
+                        let col = (255u32 << 24) | (a << 16);
+
+                        let pos = i * WIDTH + scan_pos;
                         buf[pos] = col;
+
+                        // profile[*v as usize] += 1;
                     }
 
                     scan_pos += 1;
@@ -248,17 +302,23 @@ fn main() {
                     block_ct = 0;
 
                     scan_ct += 1;
-                    if scan_ct % 3 == 1 {
+                    if scan_ct % 2 == 1 {
                         update = true;
                     }
                 }
-                // println!();
             },
             Err(e) => eprintln!("{}", e)
         };
         if update {
             window.update_with_buffer(&buf, WIDTH, HEIGHT).unwrap();
             update = false;
+            // println!("------------------------");
+            // for chunk in profile.chunks(16) {
+                // for item in chunk {
+                    // print!("{:5} ", item);
+                // }
+                // println!();
+            // }
         }
         if window.is_key_down(Key::Escape) {std::process::exit(0)}
     }
