@@ -1,7 +1,7 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-// use std::time;
+use std::time;
 
 use audio::DesktopAudioRecorder;
 
@@ -12,8 +12,8 @@ use rustfft::{FftPlanner, num_complex::Complex};
 // const WIDTH: usize = 768;
 // const HEIGHT: usize = 256;
 
-const WIDTH: usize = 1536;
-const HEIGHT: usize = 1024;
+const WIDTH: usize = 16;
+const HEIGHT: usize = 16;
 
 const AREA: usize = WIDTH * HEIGHT;
 
@@ -141,8 +141,8 @@ fn main() {
             borderless: false,
             title: true,
             resize: false,
-            scale: Scale::X1,
-            scale_mode: ScaleMode::Center,
+            scale: Scale::X32,
+            scale_mode: ScaleMode::Stretch,
             topmost: true,
             transparency: false,
             none: false,
@@ -180,19 +180,25 @@ fn main() {
     // let fft_size = 1024;
     // let fft_size = 512;
     // let fft_size = 256;
+    let new_data_size = 512;
     let line_res = HEIGHT;
 
 
     let mut planner: FftPlanner<f32> = FftPlanner::new();
     let fft = planner.plan_fft_forward(fft_size);
 
-    let mut complex_buf: Vec<Complex<f32>> = Vec::with_capacity(fft_size);
+    let mut complex_buf: Vec<Complex<f32>> = vec![Complex {re: 0.0, im: 0.0}; fft_size];
 
     let mut scan_pos = 0;
 
     let mut scan_ct = 0;
 
     // let mut profile: [u32; 256] = [0; 256];
+    
+    let mut max = 0.0;
+    let mut max2 = 0.0;
+
+    let mut values = vec![0; fft_size];
 
     while window.is_open() {
         match recorder.read_frame() {
@@ -206,95 +212,51 @@ fn main() {
                 }
 
                 // print!("Col: {:5} CT: {:4} ", block.len(), block_ct);
-                if block_ct > fft_size {
-
-                    for i in 0..fft_size {
-                        let x = block[i] as f32;
-                        // print!("{} ", x);
-                        complex_buf.push(Complex {re: x, im: 0.0});
-                        if i == fft_size-1 {break};
-                    }
+                if block_ct > new_data_size {
+                    values = values[new_data_size..].to_vec();
+                    assert!(block.len() >= new_data_size);
+                    values.extend_from_slice(&block[0..new_data_size]);
                     // dbg!(complex_buf.len());
+                    
+                    let mut complex_buf = values.iter()
+                        .map(|v| Complex {re: *v as f32, im: 0.0})
+                        .collect::<Vec<_>>();
 
                     fft.process(&mut complex_buf);
-                    complex_buf[0].re = 0.0;
-                    // dbg!(complex_buf[0].re);
-                    // dbg!(complex_buf[1].re);
-                    // dbg!(complex_buf[2].re);
 
-                    let rev_inter_cb = interleave_reversed_halves(&mut complex_buf);
-                    // dbg!(rev_inter_cb.len());
+                    let sum = complex_buf.iter()
+                        .map(|v| v.norm())
+                        .sum::<f32>();
 
-                    let chunk_size = (fft_size/line_res)+0;
-                    // dbg!(chunk_size);
+                    let mean: f32 = sum / complex_buf.len() as f32;
 
-                    let mut vals: Vec<u8> = Vec::with_capacity(line_res);
+                    // println!("{}", mean);
 
-                    for (i, big_chunk) in rev_inter_cb.chunks_exact(fft_size/32).enumerate() {
-                        let local_chunk_size = match i {
-                            0..=7       => 8,
-                            8..=15      => 7,
-                            16..=17     => 6,
-                            18..=19     => 5,
-                            20..=21     => 4,
-                            22..=26     => 3,
-                            27..=30     => 2,
-                            31          => 1,
-                            o => {
-                                panic!("Whattttt?????!? {}", o);
-                            },
-                        };
-                        // dbg!(local_chunk_size);
-                        for chunk in big_chunk.chunks_exact(local_chunk_size) {
-                            let mut a = 0f32;
-                            for n in chunk.iter() {
-                                a += n.im;
-                                a += n.re;
-                            }
-                            let b = a / chunk_size as f32;
-                            let c = interpolate_f32_to_u8(b);
-                            vals.push(c);
+                    if max < mean {max = mean};
+                    let a = (mean / max * 255.0) as u32;
+                    println!("{}", a);
+                    // let col = (255u32 << 24) | (a << 16);
+                    let col = a;
+
+                    let mean2 = values.iter()
+                        .zip(values[1..].iter())
+                        .map(|(d1, d2)| (*d1 as i32 - *d2 as i32).abs())
+                        .sum::<i32>() as f32;
+                    if max2 < mean2 {max2 = mean2};
+                    let b = (mean2/max2 * 255.0) as u8;
+
+                    for y in 0..HEIGHT/2 {
+                        let pos = y * WIDTH;
+                        for x in 0..WIDTH {
+                            buf[pos + x] = col;
                         }
-                        // println!("{:?}", vals.len());
                     }
-                    let printable_vals = {
-                        let len = vals.len();
-                        if len < line_res {len} else {line_res}
-                    };
-
-                    // const COLOR1: Rgb = Rgb {r: 000, g: 000, b: 000};
-                    // const COLOR2: Rgb = Rgb {r: 127, g: 000, b: 127};
-                    // const COLOR3: Rgb = Rgb {r: 255, g: 000, b: 000};
-                    // const COLOR4: Rgb = Rgb {r: 255, g: 230, b: 000};
-                    // const COLOR5: Rgb = Rgb {r: 255, g: 255, b: 255};
-
-                    const COLOR1: Rgb = Rgb {r: 000, g: 000, b: 000};
-                    const COLOR2: Rgb = Rgb {r: 080, g: 080, b: 120};
-                    const COLOR3: Rgb = Rgb {r: 155, g: 155, b: 200};
-                    const COLOR4: Rgb = Rgb {r: 200, g: 200, b: 255};
-                    const COLOR5: Rgb = Rgb {r: 255, g: 255, b: 255};
-
-                    for (i, v) in vals[..printable_vals].iter().enumerate() {
-                        // let lc = match *v {
-                            // 000..=063  => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR1, &COLOR2)},
-                            // 064..=127 => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR2, &COLOR3)},
-                            // 128..=195 => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR3, &COLOR4)},
-                            // 196..=255 => {rgb_lerp(*v as f32, 0.0, 63.0, &COLOR4, &COLOR5)},
-                        // };
-                        // let col = (255u32 << 24) | (lc.r << 16) | (lc.g << 8) | lc.b;
-
-                        let a = *v as u32;
-                        // // let col = (255u32 << 24) | (a << 16) | (a << 8) | a;
-                        let col = (255u32 << 24) | (a << 16);
-
-                        let pos = i * WIDTH + scan_pos;
-                        buf[pos] = col;
-
-                        // profile[*v as usize] += 1;
+                    for y in HEIGHT/2..HEIGHT {
+                        let pos = y * WIDTH;
+                        for x in 0..WIDTH {
+                            buf[pos + x] = (b as u32) << 8;
+                        }
                     }
-
-                    scan_pos += 1;
-                    if scan_pos == WIDTH {scan_pos = 0}
 
                     complex_buf.clear();
 
@@ -302,9 +264,9 @@ fn main() {
                     block_ct = 0;
 
                     scan_ct += 1;
-                    if scan_ct % 2 == 1 {
+                    // if scan_ct % 2 == 1 {
                         update = true;
-                    }
+                    // }
                 }
             },
             Err(e) => eprintln!("{}", e)
